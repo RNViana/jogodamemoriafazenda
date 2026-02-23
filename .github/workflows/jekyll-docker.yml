@@ -1,0 +1,614 @@
+name: Jekyll site CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build the site in the jekyll/builder container
+      run: |
+        docker run \
+        -v ${{ github.workspace }}:/srv/jekyll -v ${{ github.workspace }}/_site:/srv/jekyll/_site \
+        jekyll/builder:latest /bin/bash -c "chmod -R 777 /srv/jekyll && jekyll build --future"
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐷 Jogo da Memória · Fazenda Animada</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            user-select: none;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(145deg, #b8e1fc 0%, #d4f0d0 100%);
+            padding: 1rem;
+        }
+
+        /* cartão principal do jogo */
+        .game-wrapper {
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(4px);
+            border-radius: 3rem 3rem 2rem 2rem;
+            padding: 1.5rem 1.5rem 2rem;
+            box-shadow: 0 20px 30px rgba(0, 40, 20, 0.2);
+            max-width: 950px;
+            width: 100%;
+            border: 3px solid #fef9d7;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: clamp(2rem, 10vw, 3.2rem);
+            color: #3b2b1f;
+            text-shadow: 3px 3px 0 #ffd966;
+            letter-spacing: 2px;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        h1 span {
+            background: #f0fff0;
+            padding: 0.2rem 1rem;
+            border-radius: 4rem;
+            font-size: 1.6rem;
+            border: 3px solid #ffb347;
+        }
+
+        /* painel de status */
+        .stats-panel {
+            background: #feffe6;
+            border-radius: 4rem;
+            padding: 0.8rem 1.8rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            border: 3px solid #aad4aa;
+            box-shadow: inset 0 2px 8px #cfe2cf;
+            gap: 1rem;
+        }
+
+        .tentativas-box {
+            background: #fcd9b8;
+            border-radius: 3rem;
+            padding: 0.5rem 1.5rem;
+            font-size: 1.7rem;
+            font-weight: bold;
+            color: #3d2b13;
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            border: 3px solid #fea;
+        }
+
+        .tentativas-box span {
+            background: white;
+            border-radius: 50%;
+            width: 2.5rem;
+            height: 2.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+        }
+
+        .estrelas {
+            display: flex;
+            gap: 0.5rem;
+            font-size: 2rem;
+            letter-spacing: 5px;
+            color: #ffb703;
+            background: #fffaec;
+            padding: 0.3rem 1.2rem;
+            border-radius: 3rem;
+            border: 3px solid #f3b33d;
+        }
+
+        .controles {
+            display: flex;
+            gap: 0.8rem;
+        }
+
+        button {
+            background: #fcb375;
+            border: none;
+            padding: 0.7rem 1.8rem;
+            border-radius: 3rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #9e6542;
+            transition: 0.07s ease;
+            border: 2px solid #ffeab5;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:active {
+            transform: translateY(5px);
+            box-shadow: 0 1px 0 #9e6542;
+        }
+
+        /* grid do jogo */
+        .memory-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.9rem;
+            justify-content: center;
+            margin: 1.8rem 0 2rem;
+        }
+
+        /* carta */
+        .card {
+            aspect-ratio: 1 / 1;
+            background: transparent;
+            perspective: 800px;
+            cursor: pointer;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+            transform-style: preserve-3d;
+            border-radius: 20px;
+            box-shadow: 0 12px 15px -6px rgba(0, 0, 0, 0.3);
+        }
+
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid white;
+            font-size: clamp(2.5rem, 7vw, 4rem);
+        }
+
+        /* verso da carta (interrogação) */
+        .card-back {
+            background: repeating-linear-gradient(45deg, #ffd966, #ffd966 10px, #ffe68f 10px, #ffe68f 20px);
+            transform: rotateY(0deg);
+            color: #4b3a1e;
+            font-size: clamp(2.8rem, 8vw, 4.5rem);
+            text-shadow: 2px 2px 0 #ffbe2e;
+        }
+
+        /* frente da carta (emoji) */
+        .card-front {
+            background: #fffcf0;
+            transform: rotateY(180deg);
+            color: #3b2b1f;
+        }
+
+        /* cartas já combinadas (ficam viradas permanentemente) */
+        .card.matched .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card.matched {
+            filter: drop-shadow(0 0 10px #ffde7a);
+            cursor: default;
+        }
+
+        /* mensagem de vitória */
+        .win-overlay {
+            background: #edffdb;
+            border-radius: 4rem;
+            padding: 1.5rem 2rem;
+            text-align: center;
+            border: 5px solid #ffcf8a;
+            margin: 1rem 0 0;
+        }
+
+        .win-message {
+            font-size: 2.2rem;
+            font-weight: bold;
+            color: #3f6b2b;
+            animation: pop 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0.2); opacity: 0; }
+            80% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .hide {
+            display: none !important;
+        }
+
+        /* dificuldade */
+        .dificuldade-box {
+            display: flex;
+            gap: 0.4rem;
+            background: #bbd6b9;
+            padding: 0.3rem;
+            border-radius: 3rem;
+            border: 3px solid #f9eec1;
+        }
+
+        .dif-btn {
+            background: #f9e2b7;
+            box-shadow: none;
+            padding: 0.4rem 1.2rem;
+            font-size: 1.3rem;
+            box-shadow: 0 4px 0 #b28b5c;
+            color: #3a2e1b;
+        }
+
+        .dif-btn.ativa {
+            background: #ffa631;
+            color: white;
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #9e6542;
+        }
+
+        /* responsivo */
+        @media (max-width: 550px) {
+            .stats-panel {
+                flex-direction: column;
+                align-items: stretch;
+                text-align: center;
+            }
+            .memory-grid {
+                gap: 0.6rem;
+            }
+            button {
+                padding: 0.5rem 1rem;
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="game-wrapper">
+    <h1>
+        🐄 MEMÓRIA DA FAZENDA
+        <span>🐣</span>
+    </h1>
+
+    <div class="stats-panel">
+        <div class="tentativas-box">
+            🕵️ Tentativas <span id="contadorTentativas">0</span>
+        </div>
+        <div class="estrelas" id="estrelasPainel">⭐⭐⭐</div>
+        <div class="controles">
+            <button id="btnReiniciar">🔄 Jogar</button>
+        </div>
+    </div>
+
+    <!-- Grade do jogo -->
+    <div id="gridContainer" class="memory-grid"></div>
+
+    <!-- Mensagem de vitória -->
+    <div id="vitoriaPainel" class="win-overlay hide">
+        <div class="win-message">
+            🎉 PARABÉNS! VOCÊ VENCEU! 🎉
+        </div>
+        <div style="font-size: 1.8rem; margin-top: 0.5rem;">
+            ✅ tentativas: <span id="fimTentativas">0</span>  ·  
+            ⭐ <span id="fimEstrelas">3</span>
+        </div>
+        <button id="btnJogarNovamenteFim" style="margin-top: 1rem; background: #ff9f4b;">🥳 JOGAR DE NOVO</button>
+    </div>
+
+    <!-- dificuldade -->
+    <div style="display: flex; justify-content: center; margin-top: 1rem;">
+        <div class="dificuldade-box">
+            <button class="dif-btn ativa" data-dificuldade="facil">😊 6 pares</button>
+            <button class="dif-btn" data-dificuldade="medio">😎 8 pares</button>
+            <button class="dif-btn" data-dificuldade="dificil">🧑‍🌾 10 pares</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // ----- CONFIGURAÇÕES E ÁUDIO (simples) -----
+        const animaisBase = [
+            { emoji: '🐶', nome: 'cachorro' },
+            { emoji: '🐱', nome: 'gato' },
+            { emoji: '🐮', nome: 'vaca' },
+            { emoji: '🐷', nome: 'porco' },
+            { emoji: '🐔', nome: 'galinha' },
+            { emoji: '🐴', nome: 'cavalo' },
+            { emoji: '🦆', nome: 'pato' },      // extra para médio
+            { emoji: '🐑', nome: 'ovelha' },    // extra médio
+            { emoji: '🐐', nome: 'cabra' },      // extra difícil
+            { emoji: '🐓', nome: 'galo' }        // extra difícil
+        ];
+
+        // sons usando Web Audio simples (sem arquivos externos)
+        function somAcerto() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 880; // Lá agudo
+            gain.gain.value = 0.2;
+            osc.connect(gain).connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.15);
+        }
+
+        function somErro() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = 440; // Lá médio
+            gain.gain.value = 0.15;
+            osc.connect(gain).connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.1);
+        }
+
+        function somVitoria() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 523.25; // Dó
+            gain.gain.value = 0.2;
+            osc.connect(gain).connect(ctx.destination);
+            osc.start();
+            osc.frequency.setValueAtTime(659.25, now + 0.12); // Mi
+            osc.frequency.setValueAtTime(783.99, now + 0.25); // Sol
+            osc.stop(now + 0.4);
+        }
+
+        // ----- VARIÁVEIS GLOBAIS -----
+        let cartas = [];                // array de objetos { emoji, nome, id, matched }
+        let cartasViradas = [];          // índices das cartas viradas (máx 2)
+        let bloqueio = false;            // bloquear clique durante verificação
+        let tentativas = 0;
+        let paresRestantes = 0;
+        let dificuldadeAtual = 'facil';  // fácil:6, médio:8, difícil:10
+        let totalPares = 6;
+
+        // elementos DOM
+        const gridEl = document.getElementById('gridContainer');
+        const contadorTentativasEl = document.getElementById('contadorTentativas');
+        const estrelasPainel = document.getElementById('estrelasPainel');
+        const vitoriaPainel = document.getElementById('vitoriaPainel');
+        const fimTentativasEl = document.getElementById('fimTentativas');
+        const fimEstrelasEl = document.getElementById('fimEstrelas');
+        const btnReiniciar = document.getElementById('btnReiniciar');
+        const btnJogarNovamenteFim = document.getElementById('btnJogarNovamenteFim');
+        const botoesDif = document.querySelectorAll('.dif-btn');
+
+        // ----- FUNÇÕES -----
+        function atualizarEstrelas() {
+            let estrelas = '⭐⭐⭐';
+            if (totalPares === 6) { // fácil
+                if (tentativas <= 8) estrelas = '⭐⭐⭐';
+                else if (tentativas <= 12) estrelas = '⭐⭐';
+                else estrelas = '⭐';
+            } else if (totalPares === 8) { // médio
+                if (tentativas <= 12) estrelas = '⭐⭐⭐';
+                else if (tentativas <= 18) estrelas = '⭐⭐';
+                else estrelas = '⭐';
+            } else { // difícil 10 pares
+                if (tentativas <= 16) estrelas = '⭐⭐⭐';
+                else if (tentativas <= 24) estrelas = '⭐⭐';
+                else estrelas = '⭐';
+            }
+            estrelasPainel.innerText = estrelas;
+        }
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function criarCartas(quantidadePares) {
+            const selecionados = animaisBase.slice(0, quantidadePares);
+            let baralho = [];
+            selecionados.forEach((animal, idx) => {
+                // cria dois de cada
+                baralho.push({ ...animal, id: idx * 2, matched: false });
+                baralho.push({ ...animal, id: idx * 2 + 1, matched: false });
+            });
+            return shuffleArray(baralho);
+        }
+
+        function renderizarGrid() {
+            gridEl.innerHTML = '';
+            cartas.forEach((carta, index) => {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `card ${carta.matched ? 'matched' : ''}`;
+                cardDiv.dataset.index = index;
+
+                cardDiv.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-front">${carta.emoji}</div>
+                        <div class="card-back">❓</div>
+                    </div>
+                `;
+                gridEl.appendChild(cardDiv);
+            });
+        }
+
+        // reiniciar / iniciar jogo
+        function iniciarJogo() {
+            // parar qualquer bloqueio
+            bloqueio = false;
+            cartasViradas = [];
+            tentativas = 0;
+            contadorTentativasEl.innerText = tentativas;
+            paresRestantes = totalPares;
+            cartas = criarCartas(totalPares);
+            renderizarGrid();
+            vitoriaPainel.classList.add('hide');
+            atualizarEstrelas();
+        }
+
+        function verificarFimJogo() {
+            if (paresRestantes === 0) {
+                // vitória
+                somVitoria();
+                vitoriaPainel.classList.remove('hide');
+                fimTentativasEl.innerText = tentativas;
+                let estrelasFinal = estrelasPainel.innerText;
+                fimEstrelasEl.innerText = estrelasFinal;
+            }
+        }
+
+        function combinarCartas(indexA, indexB) {
+            const cartaA = cartas[indexA];
+            const cartaB = cartas[indexB];
+
+            if (cartaA.nome === cartaB.nome) {
+                // acerto
+                somAcerto();
+                cartaA.matched = true;
+                cartaB.matched = true;
+                paresRestantes -= 1;
+
+                // atualiza visual
+                const elements = document.querySelectorAll('.card');
+                elements[indexA].classList.add('matched');
+                elements[indexB].classList.add('matched');
+
+                cartasViradas = [];
+                verificarFimJogo();
+            } else {
+                // erro
+                somErro();
+                setTimeout(() => {
+                    const elements = document.querySelectorAll('.card');
+                    elements[indexA].classList.remove('flipped');
+                    elements[indexB].classList.remove('flipped');
+                    cartasViradas = [];
+                    bloqueio = false;  // libera após desvirar
+                }, 900);
+            }
+            // atualiza tentativas e estrelas (se não bloqueado)
+            if (!bloqueio || cartaA.nome === cartaB.nome) {
+                // incrementa tentativas no erro E acerto (apenas uma vez)
+                tentativas++;
+                contadorTentativasEl.innerText = tentativas;
+                atualizarEstrelas();
+            }
+        }
+
+        // Evento de clique nas cartas (delegação)
+        gridEl.addEventListener('click', (e) => {
+            const card = e.target.closest('.card');
+            if (!card) return;
+            if (bloqueio) return;
+
+            const index = parseInt(card.dataset.index, 10);
+            // já virada ou combinada?
+            if (cartas[index].matched) return;
+            if (cartasViradas.includes(index)) return; // mesma carta
+
+            // Se já tem duas viradas, não vira mais (aguardar)
+            if (cartasViradas.length === 2) return;
+
+            // Virar carta
+            card.classList.add('flipped');
+            cartasViradas.push(index);
+
+            // Se agora temos 2 cartas viradas
+            if (cartasViradas.length === 2) {
+                bloqueio = true; // bloqueia novos cliques
+                const [idx1, idx2] = cartasViradas;
+
+                // Caso seja par igual
+                if (cartas[idx1].nome === cartas[idx2].nome) {
+                    combinarCartas(idx1, idx2);
+                    // em caso de acerto, desbloqueia na hora (cartas viradas já zeradas)
+                    if (cartas[idx1].nome === cartas[idx2].nome) {
+                        cartasViradas = [];
+                        bloqueio = false;
+                    }
+                } else {
+                    // erro (combinação diferente) - combinarCartas cuida do timeout e desbloqueio
+                    combinarCartas(idx1, idx2);
+                }
+            }
+        });
+
+        // reiniciar jogo com dificuldade atual
+        function reiniciarComDificuldade() {
+            switch (dificuldadeAtual) {
+                case 'facil': totalPares = 6; break;
+                case 'medio': totalPares = 8; break;
+                case 'dificil': totalPares = 10; break;
+                default: totalPares = 6;
+            }
+            iniciarJogo();
+        }
+
+        // botões dificuldade
+        botoesDif.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                botoesDif.forEach(b => b.classList.remove('ativa'));
+                btn.classList.add('ativa');
+                dificuldadeAtual = btn.dataset.dificuldade;
+                reiniciarComDificuldade();
+            });
+        });
+
+        btnReiniciar.addEventListener('click', () => {
+            reiniciarComDificuldade();
+        });
+
+        btnJogarNovamenteFim.addEventListener('click', () => {
+            reiniciarComDificuldade();
+        });
+
+        // iniciar pela primeira vez
+        reiniciarComDificuldade();
+
+        // Prevenir duplo clique rápido após acerto (já tratado)
+        // acessibilidade extra: aviso via estrelas
+    })();
+</script>
+</body>
+</html>
